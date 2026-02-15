@@ -1173,10 +1173,27 @@
         return true;
     }
 
-    // Populate exercise dropdown with custom exercises
+    // Populate exercise dropdown with custom exercises and history exercises
     async function populateExerciseDropdown() {
         const select = document.getElementById('exerciseSelect');
         const customExercises = await loadCustomExercises();
+        const history = await loadHistory();
+
+        // Collect exercise names from history
+        const historyExercises = new Set();
+        history.forEach(session => {
+            if (session.exercises) {
+                Object.keys(session.exercises).forEach(name => historyExercises.add(name));
+            }
+        });
+
+        // Get hardcoded option values
+        const hardcoded = new Set();
+        Array.from(select.options).forEach(option => {
+            if (!option.dataset.custom && option.value && option.value !== '__custom__') {
+                hardcoded.add(option.value);
+            }
+        });
 
         // Remove old custom exercises from dropdown
         const options = Array.from(select.options);
@@ -1186,9 +1203,17 @@
             }
         });
 
+        // Merge custom exercises and history exercises (excluding hardcoded ones)
+        const allCustom = new Set([...customExercises]);
+        historyExercises.forEach(name => {
+            if (!hardcoded.has(name)) {
+                allCustom.add(name);
+            }
+        });
+
         // Add custom exercises before the "Add Custom" option
         const addCustomOption = select.querySelector('option[value="__custom__"]');
-        customExercises.forEach(exercise => {
+        Array.from(allCustom).sort().forEach(exercise => {
             const option = document.createElement('option');
             option.value = exercise;
             option.textContent = exercise;
