@@ -860,10 +860,42 @@
     // Initialize exercise dropdown with custom exercises
     populateExerciseDropdown();
 
+    // Storage wrapper - use window.storage if available, otherwise localStorage
+    const storage = {
+        async get(key) {
+            try {
+                if (window.storage) {
+                    return await window.storage.get(key);
+                } else {
+                    // Fallback to localStorage
+                    const value = localStorage.getItem(key);
+                    return value ? { key, value } : null;
+                }
+            } catch (error) {
+                console.error('Storage get error:', error);
+                return null;
+            }
+        },
+        async set(key, value) {
+            try {
+                if (window.storage) {
+                    return await window.storage.set(key, value);
+                } else {
+                    // Fallback to localStorage
+                    localStorage.setItem(key, value);
+                    return { key, value };
+                }
+            } catch (error) {
+                console.error('Storage set error:', error);
+                return null;
+            }
+        }
+    };
+
     // Load previous workout data on startup
     async function loadPreviousWorkoutData() {
         try {
-            const result = await window.storage.get('last-workout');
+            const result = await storage.get('last-workout');
             return result ? JSON.parse(result.value) : {};
         } catch (error) {
             return {};
@@ -873,7 +905,7 @@
     // Save workout data
     async function saveWorkoutData(workoutData) {
         try {
-            await window.storage.set('last-workout', JSON.stringify(workoutData));
+            await storage.set('last-workout', JSON.stringify(workoutData));
         } catch (error) {
             console.error('Failed to save workout data:', error);
         }
@@ -885,7 +917,7 @@
             // Get existing history
             let history = [];
             try {
-                const result = await window.storage.get('workout-history');
+                const result = await storage.get('workout-history');
                 history = result ? JSON.parse(result.value) : [];
             } catch (error) {
                 history = [];
@@ -907,7 +939,7 @@
                 history = history.slice(0, 50);
             }
 
-            await window.storage.set('workout-history', JSON.stringify(history));
+            await storage.set('workout-history', JSON.stringify(history));
         } catch (error) {
             console.error('Failed to save history:', error);
         }
@@ -916,7 +948,7 @@
     // Load history
     async function loadHistory() {
         try {
-            const result = await window.storage.get('workout-history');
+            const result = await storage.get('workout-history');
             return result ? JSON.parse(result.value) : [];
         } catch (error) {
             return [];
@@ -926,7 +958,7 @@
     // Load custom exercises
     async function loadCustomExercises() {
         try {
-            const result = await window.storage.get('custom-exercises');
+            const result = await storage.get('custom-exercises');
             return result ? JSON.parse(result.value) : [];
         } catch (error) {
             return [];
@@ -936,7 +968,7 @@
     // Save custom exercises
     async function saveCustomExercises(exercises) {
         try {
-            await window.storage.set('custom-exercises', JSON.stringify(exercises));
+            await storage.set('custom-exercises', JSON.stringify(exercises));
         } catch (error) {
             console.error('Failed to save custom exercises:', error);
         }
