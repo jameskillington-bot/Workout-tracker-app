@@ -817,10 +817,32 @@
         customExerciseName.value = '';
         customExerciseInput.classList.remove('active');
         
-        // Select the newly added exercise
-        exerciseSelect.value = name;
+        // Automatically add this exercise to the workout
+        const previousData = await loadPreviousWorkoutData();
+        const previousExercise = previousData[name];
+
+        const exercise = {
+            id: exerciseCounter++,
+            name: name,
+            sets: []
+        };
+
+        // Load ALL sets from previous workout if available
+        if (previousExercise && previousExercise.length > 0) {
+            // Copy all previous sets
+            exercise.sets = previousExercise.map(set => ({
+                weight: set.weight || '',
+                reps: set.reps || ''
+            }));
+        } else {
+            // No previous data, add one empty set
+            exercise.sets.push({ weight: '', reps: '' });
+        }
+
+        currentWorkout.push(exercise);
+        renderWorkout();
         
-        alert(`"${name}" added to your exercise list!`);
+        alert(`"${name}" added to your workout!`);
     });
 
     cancelCustomBtn.addEventListener('click', () => {
