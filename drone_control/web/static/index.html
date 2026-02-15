@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drone Control Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3a;
+    --text: #e0e0e0;
+    --dim: #888;
+    --accent: #4fc3f7;
+    --danger: #ef5350;
+    --success: #66bb6a;
+    --warn: #ffa726;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 1.2rem; font-weight: 600; }
+  header h1 span { color: var(--accent); }
+  .status-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: inline-block; margin-right: 8px;
+  }
+  .status-dot.connected { background: var(--success); }
+  .status-dot.disconnected { background: var(--danger); }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  main {
+    display: grid; flex: 1; overflow: hidden;
+    grid-template-columns: 280px 1fr 300px;
+    grid-template-rows: 1fr 220px;
+    gap: 1px; background: var(--border);
+  }
+  .panel {
+    background: var(--surface); padding: 16px;
+    overflow-y: auto;
+  }
+  .panel h2 {
+    font-size: 0.85rem; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--dim); margin-bottom: 12px;
+  }
+
+  /* Left panel: telemetry */
+  .telemetry { grid-row: 1 / 3; }
+  .telem-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  }
+  .telem-card {
+    background: var(--bg); border-radius: 8px; padding: 10px;
+    text-align: center;
+  }
+  .telem-card .label { font-size: 0.7rem; color: var(--dim); text-transform: uppercase; }
+  .telem-card .value { font-size: 1.4rem; font-weight: 700; margin-top: 2px; }
+  .telem-card .unit { font-size: 0.7rem; color: var(--dim); }
+  .battery-bar {
+    margin-top: 12px; background: var(--bg); border-radius: 8px;
+    padding: 10px;
+  }
+  .battery-bar .bar {
+    height: 8px; border-radius: 4px; background: #333;
+    margin-top: 6px; overflow: hidden;
+  }
+  .battery-bar .bar .fill {
+    height: 100%; border-radius: 4px;
+    transition: width 0.5s, background 0.5s;
+  }
+
+  /* Center: map canvas */
+  .map-panel { position: relative; display: flex; flex-direction: column; }
+  .map-panel canvas {
+    flex: 1; width: 100%;
+    background: #0d0f14; border-radius: 4px;
+  }
+  .map-legend {
+    position: absolute; bottom: 10px; left: 10px;
+    background: rgba(15,17,23,0.85); padding: 6px 10px;
+    border-radius: 6px; font-size: 0.7rem; color: var(--dim);
+  }
+
+  /* Right panel: controls */
+  .controls { grid-row: 1 / 3; display: flex; flex-direction: column; gap: 12px; }
+  .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn {
+    padding: 8px 14px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--text);
+    font-size: 0.82rem; cursor: pointer; transition: 0.15s;
+    flex: 1; text-align: center; min-width: 80px;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover { opacity: 0.85; }
+  .btn.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+  .btn.danger:hover { opacity: 0.85; }
+  .btn.success { background: var(--success); color: #000; border-color: var(--success); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* D-pad */
+  .dpad {
+    display: grid; grid-template-columns: 60px 60px 60px;
+    grid-template-rows: 44px 44px 44px;
+    gap: 4px; justify-content: center; margin: 8px 0;
+  }
+  .dpad .btn { min-width: unset; padding: 4px; font-size: 1.1rem; }
+
+  /* Altitude/yaw */
+  .vert-controls {
+    display: flex; gap: 8px; justify-content: center;
+  }
+  .vert-controls .btn { flex: unset; width: 70px; }
+
+  /* Routine selector */
+  select {
+    width: 100%; padding: 8px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 0.85rem;
+  }
+
+  /* Bottom: log */
+  .log-panel { grid-column: 2; }
+  .log-list {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.75rem; line-height: 1.6;
+    color: var(--dim); max-height: 180px; overflow-y: auto;
+  }
+
+  /* Responsive */
+  @media (max-width: 900px) {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto;
+    }
+    .telemetry, .controls, .log-panel { grid-row: auto; grid-column: auto; }
+    .map-panel canvas { height: 250px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>&#9654;</span> Drone Control</h1>
+  <div class="header-right">
+    <span class="status-dot disconnected" id="statusDot"></span>
+    <span id="statusText">Disconnected</span>
+    <button class="btn primary" id="btnConnect" onclick="toggleConnect()">Connect</button>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: Telemetry -->
+  <div class="panel telemetry">
+    <h2>Telemetry</h2>
+    <div class="telem-grid">
+      <div class="telem-card">
+        <div class="label">Altitude</div>
+        <div class="value" id="tAlt">0</div>
+        <div class="unit">cm</div>
+      </div>
+      <div class="telem-card">
+        <div class="label">Speed</div>
+        <div class="value" id="tSpeed">0</div>
+        <div class="unit">cm/s</div>
+      </div>
+      <div class="telem-card">
+        <div class="label">Pos X</div>
+        <div class="value" id="tX">0</div>
+        <div class="unit">cm</div>
+      </div>
+      <div class="telem-card">
+        <div class="label">Pos Y</div>
+        <div class="value" id="tY">0</div>
+        <div class="unit">cm</div>
+      </div>
+      <div class="telem-card">
+        <div class="label">Yaw</div>
+        <div class="value" id="tYaw">0</div>
+        <div class="unit">deg</div>
+      </div>
+      <div class="telem-card">
+        <div class="label">Flight Time</div>
+        <div class="value" id="tTime">0</div>
+        <div class="unit">sec</div>
+      </div>
+      <div class="telem-card">
+        <div class="label">Temp</div>
+        <div class="value" id="tTemp">--</div>
+        <div class="unit">&deg;C</div>
+      </div>
+      <div class="telem-card">
+        <div class="label">Status</div>
+        <div class="value" id="tFlight" style="font-size:1rem">GROUNDED</div>
+        <div class="unit">&nbsp;</div>
+      </div>
+    </div>
+    <div class="battery-bar">
+      <div class="label" style="font-size:0.75rem;color:var(--dim)">
+        Battery: <span id="tBat">100</span>%
+      </div>
+      <div class="bar"><div class="fill" id="batFill" style="width:100%;background:var(--success)"></div></div>
+    </div>
+
+    <h2 style="margin-top:18px">Autopilot</h2>
+    <select id="routineSelect">
+      <option value="square">Square Pattern</option>
+      <option value="circle">Circle Pattern</option>
+      <option value="figure_eight">Figure-8 Pattern</option>
+      <option value="survey_grid">Survey Grid</option>
+    </select>
+    <div class="btn-group" style="margin-top:8px">
+      <button class="btn success" onclick="loadRoutine()">Load</button>
+      <button class="btn primary" onclick="startAutopilot()">Start</button>
+      <button class="btn" onclick="pauseAutopilot()">Pause</button>
+      <button class="btn danger" onclick="abortAutopilot()">Abort</button>
+    </div>
+    <div id="autopilotStatus" style="margin-top:8px;font-size:0.78rem;color:var(--dim)">No plan loaded</div>
+  </div>
+
+  <!-- CENTER: Map -->
+  <div class="panel map-panel">
+    <h2>Position Map</h2>
+    <canvas id="mapCanvas"></canvas>
+    <div class="map-legend">Grid: 50cm &bull; Blue = drone &bull; Orange = waypoints</div>
+  </div>
+
+  <!-- RIGHT: Controls -->
+  <div class="panel controls">
+    <h2>Flight Controls</h2>
+    <div class="btn-group">
+      <button class="btn success" onclick="cmd('takeoff')">Takeoff</button>
+      <button class="btn danger" onclick="cmd('land')">Land</button>
+    </div>
+    <button class="btn danger" style="width:100%" onclick="cmd('emergency')">EMERGENCY STOP</button>
+
+    <h2>Movement</h2>
+    <div class="dpad">
+      <div></div>
+      <button class="btn" onclick="move('forward',50)">&uarr;</button>
+      <div></div>
+      <button class="btn" onclick="move('left',50)">&larr;</button>
+      <button class="btn" style="font-size:0.7rem" onclick="move('forward',0)">&bull;</button>
+      <button class="btn" onclick="move('right',50)">&rarr;</button>
+      <div></div>
+      <button class="btn" onclick="move('back',50)">&darr;</button>
+      <div></div>
+    </div>
+
+    <h2>Altitude &amp; Yaw</h2>
+    <div class="vert-controls">
+      <button class="btn" onclick="move('up',30)">&uarr; Up</button>
+      <button class="btn" onclick="move('down',30)">&darr; Down</button>
+      <button class="btn" onclick="rotate(-45)">&circlearrowleft;</button>
+      <button class="btn" onclick="rotate(45)">&circlearrowright;</button>
+    </div>
+
+    <h2>Speed</h2>
+    <div style="display:flex;align-items:center;gap:8px">
+      <input type="range" id="speedSlider" min="10" max="100" value="50"
+        style="flex:1" oninput="setSpeed(this.value)">
+      <span id="speedVal" style="min-width:40px;text-align:right">50</span>
+    </div>
+
+    <h2 style="margin-top:auto">Keyboard</h2>
+    <div style="font-size:0.72rem;color:var(--dim);line-height:1.6">
+      WASD: move &bull; QE: rotate<br>
+      R: up &bull; F: down<br>
+      T: takeoff &bull; L: land &bull; Space: emergency
+    </div>
+  </div>
+
+  <!-- BOTTOM CENTER: Log -->
+  <div class="panel log-panel">
+    <h2>Flight Log</h2>
+    <div class="log-list" id="logList"></div>
+  </div>
+</main>
+
+<script>
+// ---- State ----
+let connected = false;
+let pollTimer = null;
+
+// ---- API helpers ----
+async function api(path, method='POST', body=null) {
+  const opts = { method };
+  if (body) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch('/api/' + path, opts);
+  return res.json();
+}
+
+// ---- Connection ----
+async function toggleConnect() {
+  if (!connected) {
+    const r = await api('connect');
+    if (r.success) {
+      connected = true;
+      document.getElementById('statusDot').className = 'status-dot connected';
+      document.getElementById('statusText').textContent = 'Connected';
+      document.getElementById('btnConnect').textContent = 'Disconnect';
+      startPolling();
+    }
+  } else {
+    await api('disconnect');
+    connected = false;
+    document.getElementById('statusDot').className = 'status-dot disconnected';
+    document.getElementById('statusText').textContent = 'Disconnected';
+    document.getElementById('btnConnect').textContent = 'Connect';
+    stopPolling();
+  }
+}
+
+// ---- Commands ----
+async function cmd(name) { await api(name); }
+async function move(dir, dist) { await api('move', 'POST', { direction: dir, distance: dist }); }
+async function rotate(deg) { await api('rotate', 'POST', { degrees: deg }); }
+async function setSpeed(v) {
+  document.getElementById('speedVal').textContent = v;
+  await api('speed', 'POST', { speed: parseInt(v) });
+}
+
+// ---- Autopilot ----
+async function loadRoutine() {
+  const name = document.getElementById('routineSelect').value;
+  const r = await api('autopilot/load', 'POST', { routine: name });
+  if (r.success) updateAutopilotUI(r.plan);
+}
+async function startAutopilot() { await api('autopilot/start'); }
+async function pauseAutopilot() { await api('autopilot/pause'); }
+async function abortAutopilot() { await api('autopilot/abort'); }
+
+function updateAutopilotUI(plan) {
+  const el = document.getElementById('autopilotStatus');
+  if (!plan || plan.status === 'idle') {
+    el.innerHTML = plan ? `<b>${plan.name}</b> loaded — ${plan.waypoints.length} waypoints` : 'No plan loaded';
+  } else {
+    const wp = plan.waypoints || [];
+    const reached = wp.filter(w => w.status === 'reached').length;
+    el.innerHTML = `<b>${plan.name}</b> — ${plan.status} (${reached}/${wp.length} waypoints)`;
+  }
+}
+
+// ---- Telemetry polling ----
+function startPolling() {
+  if (pollTimer) return;
+  pollTimer = setInterval(poll, 200);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+async function poll() {
+  try {
+    const [state, ap] = await Promise.all([
+      api('state', 'GET'),
+      api('autopilot/status', 'GET'),
+    ]);
+    updateTelemetry(state);
+    updateAutopilotUI(ap);
+    drawMap(state, ap);
+  } catch(e) {}
+}
+
+function updateTelemetry(s) {
+  document.getElementById('tAlt').textContent = s.z;
+  document.getElementById('tSpeed').textContent = s.speed;
+  document.getElementById('tX').textContent = s.x;
+  document.getElementById('tY').textContent = s.y;
+  document.getElementById('tYaw').textContent = s.yaw;
+  document.getElementById('tTime').textContent = s.flight_time;
+  document.getElementById('tTemp').textContent = s.temperature;
+  document.getElementById('tBat').textContent = Math.round(s.battery);
+  document.getElementById('tFlight').textContent = s.is_flying ? 'FLYING' : 'GROUNDED';
+  document.getElementById('tFlight').style.color = s.is_flying ? 'var(--accent)' : 'var(--dim)';
+
+  const pct = Math.round(s.battery);
+  const fill = document.getElementById('batFill');
+  fill.style.width = pct + '%';
+  fill.style.background = pct > 50 ? 'var(--success)' : pct > 20 ? 'var(--warn)' : 'var(--danger)';
+
+  // Log
+  if (s.log) {
+    const el = document.getElementById('logList');
+    el.innerHTML = s.log.map(l => `<div>${l}</div>`).join('');
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+// ---- Map drawing ----
+function drawMap(state, ap) {
+  const canvas = document.getElementById('mapCanvas');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width - 32;
+  canvas.height = rect.height - 60;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const scale = 1.5; // pixels per cm
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1e2030';
+  ctx.lineWidth = 1;
+  const gridStep = 50 * scale;
+  for (let x = cx % gridStep; x < W; x += gridStep) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = cy % gridStep; y < H; y += gridStep) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Origin cross
+  ctx.strokeStyle = '#333';
+  ctx.beginPath(); ctx.moveTo(cx-8,cy); ctx.lineTo(cx+8,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,cy-8); ctx.lineTo(cx,cy+8); ctx.stroke();
+
+  // Waypoints
+  if (ap && ap.waypoints) {
+    ctx.strokeStyle = '#ff9800';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ap.waypoints.forEach((wp, i) => {
+      const px = cx + wp.x * scale;
+      const py = cy - wp.y * scale;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ap.waypoints.forEach((wp, i) => {
+      const px = cx + wp.x * scale;
+      const py = cy - wp.y * scale;
+      ctx.fillStyle = wp.status === 'reached' ? '#66bb6a'
+                     : wp.status === 'active' ? '#ffa726' : '#555';
+      ctx.beginPath();
+      ctx.arc(px, py, 5, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#888';
+      ctx.font = '10px sans-serif';
+      ctx.fillText(i+1, px+7, py+3);
+    });
+  }
+
+  // Drone
+  const dx = cx + state.x * scale;
+  const dy = cy - state.y * scale;
+  const yawRad = -state.yaw * Math.PI / 180;
+
+  // Trail dot
+  ctx.fillStyle = 'rgba(79,195,247,0.15)';
+  ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI*2); ctx.fill();
+
+  // Drone triangle
+  ctx.save();
+  ctx.translate(dx, dy);
+  ctx.rotate(yawRad);
+  ctx.fillStyle = '#4fc3f7';
+  ctx.beginPath();
+  ctx.moveTo(0, -10);
+  ctx.lineTo(-7, 7);
+  ctx.lineTo(7, 7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Coords label
+  ctx.fillStyle = '#4fc3f7';
+  ctx.font = '11px monospace';
+  ctx.fillText(`(${state.x}, ${state.y}) z=${state.z}`, dx + 12, dy - 4);
+}
+
+// ---- Keyboard controls ----
+document.addEventListener('keydown', (e) => {
+  if (!connected) return;
+  switch(e.key.toLowerCase()) {
+    case 'w': move('forward', 30); break;
+    case 's': move('back', 30); break;
+    case 'a': move('left', 30); break;
+    case 'd': move('right', 30); break;
+    case 'q': rotate(-30); break;
+    case 'e': rotate(30); break;
+    case 'r': move('up', 20); break;
+    case 'f': move('down', 20); break;
+    case 't': cmd('takeoff'); break;
+    case 'l': cmd('land'); break;
+    case ' ': e.preventDefault(); cmd('emergency'); break;
+  }
+});
+
+// Initial canvas size
+window.addEventListener('resize', () => {
+  if (connected) poll();
+});
+</script>
+</body>
+</html>
