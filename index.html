@@ -657,6 +657,60 @@
             color: #ffffff;
         }
 
+        .data-actions {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .data-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'Oswald', sans-serif;
+            font-size: 14px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .export-btn {
+            background: #1a1a1a;
+            color: #FF5F15;
+            border: 1px solid #FF5F15;
+        }
+
+        .export-btn:active {
+            background: #FF5F15;
+            color: #ffffff;
+        }
+
+        .import-btn {
+            background: #1a1a1a;
+            color: #FF5F15;
+            border: 1px solid rgba(255, 95, 21, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .import-btn:active {
+            background: #FF5F15;
+            color: #ffffff;
+        }
+
+        .import-btn input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
         .history-tabs {
             display: flex;
             gap: 8px;
@@ -923,6 +977,13 @@
             <div class="modal-header">
                 <div class="modal-title">History</div>
                 <button class="modal-close" id="historyClose">&times;</button>
+            </div>
+            <div class="data-actions">
+                <button class="data-btn export-btn" id="exportBtn">Export Data</button>
+                <label class="data-btn import-btn">
+                    Import Data
+                    <input type="file" id="importFile" accept=".json">
+                </label>
             </div>
             <div class="history-tabs">
                 <button class="history-tab active" id="sessionsTab">Sessions</button>
@@ -1646,6 +1707,80 @@
     document.getElementById('timerAdd30').addEventListener('click', () => {
         remainingSeconds += 30;
         updateTimerDisplay();
+    });
+
+    // Export data
+    document.getElementById('exportBtn').addEventListener('click', async () => {
+        try {
+            const history = await loadHistory();
+            const lastWorkout = await loadPreviousWorkoutData();
+            const customExercises = await loadCustomExercises();
+
+            const exportData = {
+                version: 1,
+                exportDate: new Date().toISOString(),
+                'workout-history': history,
+                'last-workout': lastWorkout,
+                'custom-exercises': customExercises
+            };
+
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `workout-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Export failed:', error);
+            alert('Failed to export data.');
+        }
+    });
+
+    // Import data
+    document.getElementById('importFile').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            const text = await file.text();
+            const importData = JSON.parse(text);
+
+            // Validate structure
+            if (!importData['workout-history'] && !importData['last-workout'] && !importData['custom-exercises']) {
+                alert('Invalid backup file. No workout data found.');
+                e.target.value = '';
+                return;
+            }
+
+            const historyCount = (importData['workout-history'] || []).length;
+            if (!confirm(`Import ${historyCount} workout session(s)? This will replace your current data.`)) {
+                e.target.value = '';
+                return;
+            }
+
+            if (importData['workout-history']) {
+                await storage.set('workout-history', JSON.stringify(importData['workout-history']));
+            }
+            if (importData['last-workout']) {
+                await storage.set('last-workout', JSON.stringify(importData['last-workout']));
+            }
+            if (importData['custom-exercises']) {
+                await storage.set('custom-exercises', JSON.stringify(importData['custom-exercises']));
+            }
+
+            await populateExerciseDropdown();
+            await showHistorySessions();
+
+            alert('Data imported successfully!');
+        } catch (error) {
+            console.error('Import failed:', error);
+            alert('Failed to import data. Make sure the file is a valid backup.');
+        }
+
+        e.target.value = '';
     });
 
     // Initial render
