@@ -19,6 +19,7 @@
         color: #3d3935;
         padding: 0;
         -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
     }
 
     .header {
@@ -1110,20 +1111,31 @@
             );
         });
 
-        // Save to last workout (for pre-filling next time)
-        await saveWorkoutData(workoutData);
+        // Check if we have data to save
+        if (Object.keys(workoutData).length === 0) {
+            alert('Please enter weight and reps for at least one set!');
+            return;
+        }
 
-        // Save to history
-        await saveToHistory(workoutData);
+        try {
+            // Save to last workout (for pre-filling next time)
+            await saveWorkoutData(workoutData);
 
-        alert('Workout saved! Your sets and reps will be pre-filled next time.');
-        currentWorkout = [];
-        
-        // Reset date to today
-        selectedWorkoutDate = new Date();
-        updateDateDisplay();
-        
-        renderWorkout();
+            // Save to history
+            await saveToHistory(workoutData);
+
+            alert('Workout saved! Your sets and reps will be pre-filled next time.');
+            currentWorkout = [];
+            
+            // Reset date to today
+            selectedWorkoutDate = new Date();
+            updateDateDisplay();
+            
+            renderWorkout();
+        } catch (error) {
+            console.error('Failed to save workout:', error);
+            alert('Failed to save workout. Please try again.');
+        }
     });
 
     // Make addSet available globally
