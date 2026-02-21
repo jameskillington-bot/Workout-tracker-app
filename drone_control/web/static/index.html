@@ -40,7 +40,7 @@
   main {
     display: grid; flex: 1; overflow: hidden;
     grid-template-columns: 280px 1fr 300px;
-    grid-template-rows: 1fr 220px;
+    grid-template-rows: 1fr 200px 180px;
     gap: 1px; background: var(--border);
   }
   .panel {
@@ -53,7 +53,7 @@
   }
 
   /* Left panel: telemetry */
-  .telemetry { grid-row: 1 / 3; }
+  .telemetry { grid-row: 1 / 4; }
   .telem-grid {
     display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
   }
@@ -88,9 +88,35 @@
     background: rgba(15,17,23,0.85); padding: 6px 10px;
     border-radius: 6px; font-size: 0.7rem; color: var(--dim);
   }
+  .map-hint {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(15,17,23,0.85); padding: 6px 10px;
+    border-radius: 6px; font-size: 0.7rem; color: var(--accent);
+    display: none;
+  }
+
+  /* Camera view panel */
+  .camera-panel { position: relative; display: flex; flex-direction: column; }
+  .camera-panel canvas {
+    flex: 1; width: 100%;
+    background: #0a0c10; border-radius: 4px;
+  }
+  .camera-label {
+    position: absolute; top: 8px; left: 12px;
+    font-size: 0.7rem; color: var(--danger); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .camera-status {
+    position: absolute; top: 8px; right: 12px;
+    font-size: 0.7rem; font-weight: 600;
+    padding: 2px 8px; border-radius: 4px;
+  }
+  .camera-status.clear { color: var(--success); }
+  .camera-status.avoiding { color: var(--warn); }
+  .camera-status.critical { color: var(--danger); }
 
   /* Right panel: controls */
-  .controls { grid-row: 1 / 3; display: flex; flex-direction: column; gap: 12px; }
+  .controls { grid-row: 1 / 4; display: flex; flex-direction: column; gap: 12px; }
   .btn-group { display: flex; gap: 6px; flex-wrap: wrap; }
   .btn {
     padding: 8px 14px; border: 1px solid var(--border);
@@ -120,19 +146,38 @@
   }
   .vert-controls .btn { flex: unset; width: 70px; }
 
-  /* Routine selector */
-  select {
+  /* Routine/autonomous selector */
+  select, .coord-input {
     width: 100%; padding: 8px; border-radius: 6px;
     border: 1px solid var(--border); background: var(--bg);
     color: var(--text); font-size: 0.85rem;
   }
+  .coord-row {
+    display: flex; gap: 6px; margin-top: 6px;
+  }
+  .coord-row label {
+    font-size: 0.7rem; color: var(--dim); display: block; margin-bottom: 2px;
+  }
+  .coord-row input {
+    width: 100%; padding: 5px 8px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 0.85rem; text-align: center;
+  }
+
+  .nav-status {
+    margin-top: 6px; padding: 8px; background: var(--bg);
+    border-radius: 6px; font-size: 0.75rem; color: var(--dim);
+    line-height: 1.5;
+  }
+  .nav-status .status-val { color: var(--accent); font-weight: 600; }
+  .nav-status .warn-val { color: var(--warn); font-weight: 600; }
 
   /* Bottom: log */
   .log-panel { grid-column: 2; }
   .log-list {
     font-family: 'Cascadia Code', 'Fira Code', monospace;
     font-size: 0.75rem; line-height: 1.6;
-    color: var(--dim); max-height: 180px; overflow-y: auto;
+    color: var(--dim); max-height: 140px; overflow-y: auto;
   }
 
   /* Responsive */
@@ -141,7 +186,7 @@
       grid-template-columns: 1fr;
       grid-template-rows: auto;
     }
-    .telemetry, .controls, .log-panel { grid-row: auto; grid-column: auto; }
+    .telemetry, .controls, .log-panel, .camera-panel { grid-row: auto; grid-column: auto; }
     .map-panel canvas { height: 250px; }
   }
 </style>
@@ -224,13 +269,32 @@
       <button class="btn danger" onclick="abortAutopilot()">Abort</button>
     </div>
     <div id="autopilotStatus" style="margin-top:8px;font-size:0.78rem;color:var(--dim)">No plan loaded</div>
+
+    <h2 style="margin-top:18px">Autonomous Nav</h2>
+    <div style="font-size:0.72rem;color:var(--dim);margin-bottom:6px">
+      Click the map to set destination, or enter coords:
+    </div>
+    <div class="coord-row">
+      <div style="flex:1"><label>X (cm)</label><input type="number" id="navX" value="200"></div>
+      <div style="flex:1"><label>Y (cm)</label><input type="number" id="navY" value="200"></div>
+      <div style="flex:1"><label>Z (cm)</label><input type="number" id="navZ" value="80"></div>
+    </div>
+    <div class="btn-group" style="margin-top:8px">
+      <button class="btn primary" onclick="setDestination()">Set Dest</button>
+      <button class="btn success" onclick="startNav()">Navigate</button>
+      <button class="btn danger" onclick="stopNav()">Stop</button>
+    </div>
+    <div class="nav-status" id="navStatus">
+      Status: <span class="status-val">idle</span>
+    </div>
   </div>
 
   <!-- CENTER: Map -->
   <div class="panel map-panel">
     <h2>Position Map</h2>
     <canvas id="mapCanvas"></canvas>
-    <div class="map-legend">Grid: 50cm &bull; Blue = drone &bull; Orange = waypoints</div>
+    <div class="map-legend">Grid: 50cm &bull; Blue = drone &bull; Click = set destination</div>
+    <div class="map-hint" id="mapHint">Click to set nav destination</div>
   </div>
 
   <!-- RIGHT: Controls -->
@@ -274,8 +338,17 @@
     <div style="font-size:0.72rem;color:var(--dim);line-height:1.6">
       WASD: move &bull; QE: rotate<br>
       R: up &bull; F: down<br>
-      T: takeoff &bull; L: land &bull; Space: emergency
+      T: takeoff &bull; L: land &bull; Space: emergency<br>
+      N: start/stop autonomous nav
     </div>
+  </div>
+
+  <!-- CENTER ROW 2: Camera View -->
+  <div class="panel camera-panel">
+    <h2>Camera View</h2>
+    <canvas id="cameraCanvas"></canvas>
+    <span class="camera-label" id="camLabel">CAM</span>
+    <span class="camera-status clear" id="camStatus">CLEAR</span>
   </div>
 
   <!-- BOTTOM CENTER: Log -->
@@ -289,6 +362,17 @@
 // ---- State ----
 let connected = false;
 let pollTimer = null;
+let obstacles = [];
+let navDestination = null;
+let navActive = false;
+
+// Obstacle colors
+const OBS_COLORS = {
+  building: { fill: 'rgba(160,82,45,0.6)', stroke: '#A0522D', cam: [160,82,45] },
+  tree:     { fill: 'rgba(46,139,87,0.5)',  stroke: '#2E8B57', cam: [46,139,87] },
+  wall:     { fill: 'rgba(128,128,128,0.5)',stroke: '#808080', cam: [128,128,128] },
+  pillar:   { fill: 'rgba(176,196,222,0.5)',stroke: '#B0C4DE', cam: [176,196,222] },
+};
 
 // ---- API helpers ----
 async function api(path, method='POST', body=null) {
@@ -310,6 +394,7 @@ async function toggleConnect() {
       document.getElementById('statusDot').className = 'status-dot connected';
       document.getElementById('statusText').textContent = 'Connected';
       document.getElementById('btnConnect').textContent = 'Disconnect';
+      loadEnvironment();
       startPolling();
     }
   } else {
@@ -352,6 +437,93 @@ function updateAutopilotUI(plan) {
   }
 }
 
+// ---- Autonomous Navigation ----
+async function loadEnvironment() {
+  const data = await api('environment', 'GET');
+  obstacles = data.obstacles || [];
+}
+
+async function setDestination() {
+  const x = parseFloat(document.getElementById('navX').value) || 0;
+  const y = parseFloat(document.getElementById('navY').value) || 0;
+  const z = parseFloat(document.getElementById('navZ').value) || 80;
+  const r = await api('autonomous/destination', 'POST', { x, y, z });
+  if (r.success) {
+    navDestination = r.destination;
+  }
+}
+
+async function startNav() {
+  if (!navDestination) await setDestination();
+  const r = await api('autonomous/start');
+  if (r.success) navActive = true;
+}
+
+async function stopNav() {
+  await api('autonomous/stop');
+  navActive = false;
+}
+
+function updateNavUI(status) {
+  navActive = status.active;
+  if (status.destination) navDestination = status.destination;
+
+  const el = document.getElementById('navStatus');
+  const s = status.status;
+  const d = status.distance_to_goal;
+  const a = status.avoidance_action;
+
+  let avoidClass = 'status-val';
+  if (a === 'avoiding') avoidClass = 'warn-val';
+  if (a === 'critical') avoidClass = 'warn-val';
+
+  let html = `Status: <span class="status-val">${s}</span>`;
+  if (status.destination) {
+    html += `<br>Dest: (${status.destination.x}, ${status.destination.y}, ${status.destination.z})`;
+    html += `<br>Distance: <span class="status-val">${d} cm</span>`;
+  }
+  if (status.active) {
+    html += `<br>Avoidance: <span class="${avoidClass}">${a}</span>`;
+  }
+  if (status.reached) {
+    html += `<br><span class="status-val">DESTINATION REACHED</span>`;
+  }
+  el.innerHTML = html;
+
+  // Update camera status badge
+  const camStatus = document.getElementById('camStatus');
+  if (a === 'critical') {
+    camStatus.textContent = 'OBSTACLE';
+    camStatus.className = 'camera-status critical';
+  } else if (a === 'avoiding') {
+    camStatus.textContent = 'AVOIDING';
+    camStatus.className = 'camera-status avoiding';
+  } else {
+    camStatus.textContent = 'CLEAR';
+    camStatus.className = 'camera-status clear';
+  }
+}
+
+// ---- Map click to set destination ----
+document.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('mapCanvas');
+  canvas.addEventListener('click', (e) => {
+    if (!connected) return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const scale = 1.5;
+    const clickX = (e.clientX - rect.left) * (canvas.width / rect.width);
+    const clickY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const worldX = (clickX - cx) / scale;
+    const worldY = -(clickY - cy) / scale;
+
+    document.getElementById('navX').value = Math.round(worldX);
+    document.getElementById('navY').value = Math.round(worldY);
+    setDestination();
+  });
+});
+
 // ---- Telemetry polling ----
 function startPolling() {
   if (pollTimer) return;
@@ -363,13 +535,17 @@ function stopPolling() {
 
 async function poll() {
   try {
-    const [state, ap] = await Promise.all([
+    const [state, ap, navSt, camFrame] = await Promise.all([
       api('state', 'GET'),
       api('autopilot/status', 'GET'),
+      api('autonomous/status', 'GET'),
+      api('camera', 'GET'),
     ]);
     updateTelemetry(state);
     updateAutopilotUI(ap);
+    updateNavUI(navSt);
     drawMap(state, ap);
+    drawCamera(camFrame);
   } catch(e) {}
 }
 
@@ -427,6 +603,62 @@ function drawMap(state, ap) {
   ctx.beginPath(); ctx.moveTo(cx-8,cy); ctx.lineTo(cx+8,cy); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(cx,cy-8); ctx.lineTo(cx,cy+8); ctx.stroke();
 
+  // Obstacles
+  for (const obs of obstacles) {
+    const px = cx + obs.x * scale;
+    const py = cy - obs.y * scale;
+    const colors = OBS_COLORS[obs.type] || OBS_COLORS.building;
+
+    ctx.fillStyle = colors.fill;
+    ctx.strokeStyle = colors.stroke;
+    ctx.lineWidth = 1.5;
+
+    if (obs.is_cylindrical) {
+      const r = (obs.width / 2) * scale;
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      const w = obs.width * scale;
+      const d = obs.depth * scale;
+      ctx.fillRect(px - w/2, py - d/2, w, d);
+      ctx.strokeRect(px - w/2, py - d/2, w, d);
+    }
+
+    // Label
+    ctx.fillStyle = colors.stroke;
+    ctx.font = '9px sans-serif';
+    ctx.fillText(obs.type, px - 12, py + 3);
+  }
+
+  // Destination marker
+  if (navDestination) {
+    const dx = cx + navDestination.x * scale;
+    const dy = cy - navDestination.y * scale;
+
+    // Dashed line from drone to destination
+    ctx.strokeStyle = '#ef5350';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(cx + state.x * scale, cy - state.y * scale);
+    ctx.lineTo(dx, dy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Target crosshair
+    ctx.strokeStyle = '#ef5350';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(dx, dy, 8, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(dx - 12, dy); ctx.lineTo(dx + 12, dy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(dx, dy - 12); ctx.lineTo(dx, dy + 12); ctx.stroke();
+
+    ctx.fillStyle = '#ef5350';
+    ctx.font = '10px monospace';
+    ctx.fillText(`(${navDestination.x}, ${navDestination.y})`, dx + 14, dy - 6);
+  }
+
   // Waypoints
   if (ap && ap.waypoints) {
     ctx.strokeStyle = '#ff9800';
@@ -461,6 +693,21 @@ function drawMap(state, ap) {
   const dy = cy - state.y * scale;
   const yawRad = -state.yaw * Math.PI / 180;
 
+  // Camera FOV cone
+  if (state.is_flying) {
+    const fovHalf = 35 * Math.PI / 180; // 70 deg total
+    const coneLen = 120 * scale;
+    ctx.fillStyle = 'rgba(79,195,247,0.06)';
+    ctx.beginPath();
+    ctx.moveTo(dx, dy);
+    ctx.lineTo(dx + Math.cos(yawRad - fovHalf) * coneLen,
+               dy - Math.sin(yawRad - fovHalf) * coneLen);
+    ctx.lineTo(dx + Math.cos(yawRad + fovHalf) * coneLen,
+               dy - Math.sin(yawRad + fovHalf) * coneLen);
+    ctx.closePath();
+    ctx.fill();
+  }
+
   // Trail dot
   ctx.fillStyle = 'rgba(79,195,247,0.15)';
   ctx.beginPath(); ctx.arc(dx, dy, 3, 0, Math.PI*2); ctx.fill();
@@ -484,9 +731,102 @@ function drawMap(state, ap) {
   ctx.fillText(`(${state.x}, ${state.y}) z=${state.z}`, dx + 12, dy - 4);
 }
 
+// ---- Camera view drawing (Wolfenstein-style raycaster) ----
+function drawCamera(frame) {
+  if (!frame) return;
+  const canvas = document.getElementById('cameraCanvas');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width - 32;
+  canvas.height = rect.height - 50;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // Sky gradient
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H / 2);
+  skyGrad.addColorStop(0, '#0a0e1a');
+  skyGrad.addColorStop(1, '#1a2040');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H / 2);
+
+  // Ground gradient
+  const gndGrad = ctx.createLinearGradient(0, H / 2, 0, H);
+  gndGrad.addColorStop(0, '#1a1a14');
+  gndGrad.addColorStop(1, '#0d0d0a');
+  ctx.fillStyle = gndGrad;
+  ctx.fillRect(0, H / 2, W, H / 2);
+
+  const numRays = frame.num_rays;
+  const colWidth = W / numRays;
+  const maxRange = frame.max_range;
+  const projConst = H * 1.2; // projection constant
+
+  for (let i = 0; i < numRays; i++) {
+    const depth = frame.depths[i];
+    const obsType = frame.obstacle_types[i];
+    const obsHeight = frame.obstacle_heights[i];
+
+    if (!obsType || depth >= maxRange) continue;
+
+    // Wall strip height based on distance (perspective projection)
+    const wallScreenH = Math.min(H, (projConst * Math.min(obsHeight, 200)) / (depth * 2));
+    const wallTop = (H - wallScreenH) / 2;
+
+    // Color based on obstacle type, darkened by distance
+    const baseColor = OBS_COLORS[obsType] ? OBS_COLORS[obsType].cam : [128, 128, 128];
+    const fog = Math.max(0.15, 1 - (depth / maxRange) * 0.85);
+    const r = Math.round(baseColor[0] * fog);
+    const g = Math.round(baseColor[1] * fog);
+    const b = Math.round(baseColor[2] * fog);
+
+    // Slight variation for left/right sides of obstacles
+    const shade = (i % 2 === 0) ? 0 : -15;
+
+    ctx.fillStyle = `rgb(${Math.max(0,r+shade)},${Math.max(0,g+shade)},${Math.max(0,b+shade)})`;
+    ctx.fillRect(i * colWidth, wallTop, colWidth + 1, wallScreenH);
+
+    // Top edge highlight
+    ctx.fillStyle = `rgba(255,255,255,${fog * 0.15})`;
+    ctx.fillRect(i * colWidth, wallTop, colWidth + 1, 2);
+  }
+
+  // Danger indicator bars for close obstacles
+  const sectorWidth = W / numRays;
+  for (let i = 0; i < numRays; i++) {
+    const depth = frame.depths[i];
+    if (depth < 100) {
+      const urgency = 1 - depth / 100;
+      ctx.fillStyle = `rgba(239,83,80,${urgency * 0.4})`;
+      ctx.fillRect(i * sectorWidth, H - 4, sectorWidth + 1, 4);
+    }
+  }
+
+  // Center reticle
+  ctx.strokeStyle = 'rgba(79,195,247,0.5)';
+  ctx.lineWidth = 1;
+  const rcx = W / 2, rcy = H / 2;
+  ctx.beginPath(); ctx.moveTo(rcx - 10, rcy); ctx.lineTo(rcx - 4, rcy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rcx + 4, rcy); ctx.lineTo(rcx + 10, rcy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rcx, rcy - 10); ctx.lineTo(rcx, rcy - 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rcx, rcy + 4); ctx.lineTo(rcx, rcy + 10); ctx.stroke();
+
+  // Depth range bar at bottom
+  ctx.fillStyle = 'rgba(15,17,23,0.7)';
+  ctx.fillRect(0, H - 20, W, 20);
+  const minDepth = Math.min(...frame.depths);
+  const depthColor = minDepth < 50 ? '#ef5350' : minDepth < 100 ? '#ffa726' : '#66bb6a';
+  ctx.fillStyle = depthColor;
+  ctx.font = '10px monospace';
+  ctx.fillText(`Nearest: ${Math.round(minDepth)} cm`, 8, H - 7);
+
+  // Heading
+  ctx.fillStyle = '#4fc3f7';
+  ctx.fillText(`HDG ${Math.round(frame.drone_yaw)}°`, W - 70, H - 7);
+}
+
 // ---- Keyboard controls ----
 document.addEventListener('keydown', (e) => {
   if (!connected) return;
+  if (e.target.tagName === 'INPUT') return; // skip when typing in inputs
   switch(e.key.toLowerCase()) {
     case 'w': move('forward', 30); break;
     case 's': move('back', 30); break;
@@ -499,6 +839,10 @@ document.addEventListener('keydown', (e) => {
     case 't': cmd('takeoff'); break;
     case 'l': cmd('land'); break;
     case ' ': e.preventDefault(); cmd('emergency'); break;
+    case 'n':
+      if (navActive) stopNav();
+      else startNav();
+      break;
   }
 });
 

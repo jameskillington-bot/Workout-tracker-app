@@ -11,9 +11,12 @@ from flask import Flask, jsonify, request, send_from_directory
 from ..core.drone import Drone
 from ..core.simulator import SimulatedDrone
 from ..core.tello import TelloDrone
+from ..core.environment import Environment
+from ..core.camera import SimulatedCamera
 from ..autopilot.flight_plan import (
     Autopilot, FlightPlan, BUILTIN_ROUTINES,
 )
+from ..autopilot.obstacle_avoidance import AutonomousNavigator
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -22,10 +25,13 @@ app = Flask(__name__, static_folder=str(STATIC_DIR))
 # -- Global state (initialised in create_app) -----------------------------
 drone: Drone | None = None
 autopilot: Autopilot | None = None
+environment: Environment | None = None
+camera: SimulatedCamera | None = None
+navigator: AutonomousNavigator | None = None
 
 
 def create_app(use_simulator: bool = True) -> Flask:
-    global drone, autopilot
+    global drone, autopilot, environment, camera, navigator
 
     if use_simulator:
         drone = SimulatedDrone()
@@ -33,6 +39,12 @@ def create_app(use_simulator: bool = True) -> Flask:
         drone = TelloDrone()
 
     autopilot = Autopilot(drone)
+
+    # Simulated environment + camera for obstacle avoidance
+    environment = Environment.default_environment()
+    camera = SimulatedCamera(fov_h=70.0, num_rays=48, max_range=500.0)
+    navigator = AutonomousNavigator(drone, environment, camera)
+
     return app
 
 
@@ -194,3 +206,56 @@ def api_autopilot_status():
     if plan:
         return jsonify(plan.to_dict())
     return jsonify({"status": "idle", "waypoints": []})
+
+
+# -- Environment ----------------------------------------------------------
+
+@app.route("/api/environment")
+def api_environment():
+    return jsonify({"obstacles": environment.get_obstacles_dict()})
+
+
+# -- Camera ---------------------------------------------------------------
+
+@app.route("/api/camera")
+def api_camera():
+    """Return the latest camera depth frame."""
+    frame = navigator.last_frame
+    if frame:
+        return jsonify(frame.to_dict())
+    # Capture a fresh frame if none yet
+    state = drone.get_state()
+    fresh = camera.capture(state, environment)
+    return jsonify(fresh.to_dict())
+
+
+# -- Autonomous navigation -----------------------------------------------
+
+@app.route("/api/autonomous/destination", methods=["POST"])
+def api_autonomous_destination():
+    data = request.get_json(force=True)
+    x = float(data.get("x", 0))
+    y = float(data.get("y", 0))
+    z = float(data.get("z", 80))
+    navigator.set_destination(x, y, z)
+    return jsonify({"success": True, "destination": {"x": x, "y": y, "z": z}})
+
+
+@app.route("/api/autonomous/start", methods=["POST"])
+def api_autonomous_start():
+    try:
+        navigator.start()
+        return jsonify({"success": True})
+    except RuntimeError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+@app.route("/api/autonomous/stop", methods=["POST"])
+def api_autonomous_stop():
+    navigator.stop()
+    return jsonify({"success": True})
+
+
+@app.route("/api/autonomous/status")
+def api_autonomous_status():
+    return jsonify(navigator.get_status())
