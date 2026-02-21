@@ -1757,54 +1757,79 @@
     let timerInterval = null;
     let timerEndTime = 0; // absolute timestamp when timer finishes
     let timerFinished = false;
+    let timerAudioCtx = null; // pre-unlocked AudioContext for iOS
 
-    // Generate a deep bell sound using Web Audio API
+    // Unlock and keep an AudioContext alive (must be called from a user tap)
+    function ensureAudioContext() {
+        if (timerAudioCtx && timerAudioCtx.state !== 'closed') {
+            // Resume if iOS suspended it
+            if (timerAudioCtx.state === 'suspended') {
+                timerAudioCtx.resume();
+            }
+            return;
+        }
+        try {
+            timerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            // Play a silent buffer to fully unlock audio on iOS Safari
+            const buf = timerAudioCtx.createBuffer(1, 1, 22050);
+            const src = timerAudioCtx.createBufferSource();
+            src.buffer = buf;
+            src.connect(timerAudioCtx.destination);
+            src.start(0);
+        } catch (e) {
+            console.log('AudioContext init failed:', e);
+        }
+    }
+
+    // Generate a deep bell sound using the pre-unlocked AudioContext
     function playBellSound() {
         try {
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const ctx = timerAudioCtx;
+            if (!ctx || ctx.state === 'closed') return;
+            // Resume in case iOS suspended it while backgrounded
+            if (ctx.state === 'suspended') ctx.resume();
+
+            const t = ctx.currentTime;
 
             // Main bell tone (deep, ~180Hz)
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(180, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 2);
-            gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2.5);
+            osc.frequency.setValueAtTime(180, t);
+            osc.frequency.exponentialRampToValueAtTime(120, t + 2);
+            gain.gain.setValueAtTime(0.6, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
             osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start(audioCtx.currentTime);
-            osc.stop(audioCtx.currentTime + 2.5);
+            gain.connect(ctx.destination);
+            osc.start(t);
+            osc.stop(t + 2.5);
 
             // Harmonic overtone for richness
-            const osc2 = audioCtx.createOscillator();
-            const gain2 = audioCtx.createGain();
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
             osc2.type = 'sine';
-            osc2.frequency.setValueAtTime(360, audioCtx.currentTime);
-            osc2.frequency.exponentialRampToValueAtTime(240, audioCtx.currentTime + 1.5);
-            gain2.gain.setValueAtTime(0.2, audioCtx.currentTime);
-            gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+            osc2.frequency.setValueAtTime(360, t);
+            osc2.frequency.exponentialRampToValueAtTime(240, t + 1.5);
+            gain2.gain.setValueAtTime(0.2, t);
+            gain2.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
             osc2.connect(gain2);
-            gain2.connect(audioCtx.destination);
-            osc2.start(audioCtx.currentTime);
-            osc2.stop(audioCtx.currentTime + 1.5);
+            gain2.connect(ctx.destination);
+            osc2.start(t);
+            osc2.stop(t + 1.5);
 
             // Sub-bass thump for depth
-            const osc3 = audioCtx.createOscillator();
-            const gain3 = audioCtx.createGain();
+            const osc3 = ctx.createOscillator();
+            const gain3 = ctx.createGain();
             osc3.type = 'sine';
-            osc3.frequency.setValueAtTime(90, audioCtx.currentTime);
-            gain3.gain.setValueAtTime(0.3, audioCtx.currentTime);
-            gain3.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+            osc3.frequency.setValueAtTime(90, t);
+            gain3.gain.setValueAtTime(0.3, t);
+            gain3.gain.exponentialRampToValueAtTime(0.001, t + 2);
             osc3.connect(gain3);
-            gain3.connect(audioCtx.destination);
-            osc3.start(audioCtx.currentTime);
-            osc3.stop(audioCtx.currentTime + 2);
-
-            // Clean up after sound completes
-            setTimeout(() => audioCtx.close(), 3000);
+            gain3.connect(ctx.destination);
+            osc3.start(t);
+            osc3.stop(t + 2);
         } catch (e) {
-            console.log('Audio not available:', e);
+            console.log('Audio playback failed:', e);
         }
     }
 
@@ -1841,6 +1866,9 @@
     }
 
     window.startTimer = function(seconds) {
+        // Unlock audio on this user tap so the bell can play later
+        ensureAudioContext();
+
         timerEndTime = Date.now() + seconds * 1000;
         timerFinished = false;
         const overlay = document.getElementById('timerOverlay');
@@ -1860,6 +1888,10 @@
     // When the page becomes visible again, immediately sync the timer
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden && timerInterval && !timerFinished) {
+            // Resume AudioContext that iOS may have suspended while backgrounded
+            if (timerAudioCtx && timerAudioCtx.state === 'suspended') {
+                timerAudioCtx.resume();
+            }
             updateTimerDisplay();
             if (getRemainingSeconds() <= 0) {
                 onTimerComplete();
