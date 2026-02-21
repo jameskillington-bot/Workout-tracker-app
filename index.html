@@ -893,6 +893,37 @@
             color: #ffffff;
         }
 
+        .scroll-top-btn {
+            position: fixed;
+            bottom: 80px;
+            right: 16px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(26, 26, 26, 0.9);
+            border: 1px solid rgba(255, 95, 21, 0.4);
+            color: #FF5F15;
+            font-size: 22px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 99;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+        }
+
+        .scroll-top-btn.visible {
+            display: flex;
+        }
+
+        .scroll-top-btn:active {
+            background: #FF5F15;
+            color: #ffffff;
+        }
+
         @media (min-width: 600px) {
             .actions {
                 max-width: 600px;
@@ -961,6 +992,12 @@
         <button class="action-btn finish-btn" id="finishBtn">Finish Workout</button>
     </div>
 
+    <button class="scroll-top-btn" id="scrollTopBtn" aria-label="Scroll to top">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+    </button>
+
     <div class="timer-overlay" id="timerOverlay">
         <div class="timer-content">
             <div class="timer-display" id="timerDisplay">2:00</div>
@@ -999,6 +1036,52 @@
     let currentWorkout = [];
     let exerciseCounter = 0;
     let selectedWorkoutDate = new Date();
+
+    // --- Active workout persistence ---
+    // Saves the in-progress workout to storage so it survives page reloads,
+    // browser tab eviction, and phone screen-off timeouts.
+    function saveActiveWorkout() {
+        try {
+            const data = {
+                workout: currentWorkout,
+                counter: exerciseCounter,
+                date: selectedWorkoutDate.toISOString()
+            };
+            localStorage.setItem('active-workout', JSON.stringify(data));
+        } catch (e) { /* ignore quota errors */ }
+    }
+
+    function clearActiveWorkout() {
+        localStorage.removeItem('active-workout');
+    }
+
+    function restoreActiveWorkout() {
+        try {
+            const raw = localStorage.getItem('active-workout');
+            if (!raw) return false;
+            const data = JSON.parse(raw);
+            if (data.workout && data.workout.length > 0) {
+                currentWorkout = data.workout;
+                exerciseCounter = data.counter || currentWorkout.length;
+                selectedWorkoutDate = new Date(data.date);
+                return true;
+            }
+        } catch (e) { /* ignore parse errors */ }
+        return false;
+    }
+
+    // Save whenever the page is hidden (phone locked, tab switch, etc.)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && currentWorkout.length > 0) {
+            saveActiveWorkout();
+        }
+    });
+    // Also save on beforeunload (browser close / navigation)
+    window.addEventListener('beforeunload', () => {
+        if (currentWorkout.length > 0) {
+            saveActiveWorkout();
+        }
+    });
 
     // Set current date
     function updateDateDisplay() {
@@ -1088,7 +1171,7 @@
         }
 
         currentWorkout.push(exercise);
-        renderWorkout();
+        renderWorkout(true); // scroll to newly added exercise
 
         alert(`"${name}" added to your workout!`);
     });
@@ -1317,24 +1400,25 @@
         }
 
         currentWorkout.push(exercise);
-        renderWorkout();
+        renderWorkout(true); // scroll to newly added exercise
         select.value = '';
     });
 
     // Render workout
-    function renderWorkout() {
+    function renderWorkout(scrollToBottom) {
         const container = document.getElementById('workoutContainer');
         const emptyState = document.getElementById('emptyState');
 
         if (currentWorkout.length === 0) {
             container.innerHTML = '';
             emptyState.style.display = 'block';
+            clearActiveWorkout();
             return;
         }
 
         emptyState.style.display = 'none';
         container.innerHTML = currentWorkout.map(exercise => `
-            <div class="exercise-card">
+            <div class="exercise-card" data-exercise-id="${exercise.id}">
                 <div class="exercise-header">
                     <div class="exercise-name">${exercise.name}</div>
                     <button class="remove-btn" onclick="removeExercise(${exercise.id})">Remove</button>
@@ -1368,6 +1452,18 @@
                 <button class="add-set-btn" onclick="addSet(${exercise.id})">+ Add Set</button>
             </div>
         `).join('');
+
+        // Persist active workout state
+        saveActiveWorkout();
+
+        // Auto-scroll to the last exercise card when a new exercise is added
+        if (scrollToBottom) {
+            const cards = container.querySelectorAll('.exercise-card');
+            if (cards.length > 0) {
+                const lastCard = cards[cards.length - 1];
+                setTimeout(() => lastCard.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+            }
+        }
     }
 
     // Add set to exercise
@@ -1397,6 +1493,7 @@
         const exercise = currentWorkout.find(e => e.id === exerciseId);
         if (exercise && exercise.sets[setIndex]) {
             exercise.sets[setIndex][field] = value;
+            saveActiveWorkout();
         }
     };
 
@@ -1419,6 +1516,7 @@
     document.getElementById('clearBtn').addEventListener('click', () => {
         if (currentWorkout.length > 0 && confirm('Clear all exercises from this workout?')) {
             currentWorkout = [];
+            clearActiveWorkout();
             renderWorkout();
         }
     });
@@ -1453,6 +1551,7 @@
 
             alert('Workout saved! Your sets and reps will be pre-filled next time.');
             currentWorkout = [];
+            clearActiveWorkout();
 
             // Reset date to today
             selectedWorkoutDate = new Date();
@@ -1654,58 +1753,144 @@
         alert('Workout loaded! You can now modify and save it as a new session.');
     };
 
-    // Timer functionality
+    // Timer functionality - uses wall-clock time so it works when screen is off
     let timerInterval = null;
-    let remainingSeconds = 0;
+    let timerEndTime = 0; // absolute timestamp when timer finishes
+    let timerFinished = false;
+
+    // Generate a deep bell sound using Web Audio API
+    function playBellSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Main bell tone (deep, ~180Hz)
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 2);
+            gain.gain.setValueAtTime(0.6, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2.5);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(audioCtx.currentTime);
+            osc.stop(audioCtx.currentTime + 2.5);
+
+            // Harmonic overtone for richness
+            const osc2 = audioCtx.createOscillator();
+            const gain2 = audioCtx.createGain();
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(360, audioCtx.currentTime);
+            osc2.frequency.exponentialRampToValueAtTime(240, audioCtx.currentTime + 1.5);
+            gain2.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+            osc2.connect(gain2);
+            gain2.connect(audioCtx.destination);
+            osc2.start(audioCtx.currentTime);
+            osc2.stop(audioCtx.currentTime + 1.5);
+
+            // Sub-bass thump for depth
+            const osc3 = audioCtx.createOscillator();
+            const gain3 = audioCtx.createGain();
+            osc3.type = 'sine';
+            osc3.frequency.setValueAtTime(90, audioCtx.currentTime);
+            gain3.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain3.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 2);
+            osc3.connect(gain3);
+            gain3.connect(audioCtx.destination);
+            osc3.start(audioCtx.currentTime);
+            osc3.stop(audioCtx.currentTime + 2);
+
+            // Clean up after sound completes
+            setTimeout(() => audioCtx.close(), 3000);
+        } catch (e) {
+            console.log('Audio not available:', e);
+        }
+    }
+
+    function getRemainingSeconds() {
+        return Math.max(0, Math.ceil((timerEndTime - Date.now()) / 1000));
+    }
+
+    function updateTimerDisplay() {
+        const remaining = getRemainingSeconds();
+        const minutes = Math.floor(remaining / 60);
+        const seconds = remaining % 60;
+        document.getElementById('timerDisplay').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    function onTimerComplete() {
+        if (timerFinished) return;
+        timerFinished = true;
+        clearInterval(timerInterval);
+        timerInterval = null;
+        updateTimerDisplay();
+
+        // Play bell sound
+        playBellSound();
+
+        // Vibrate
+        if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200, 100, 200]);
+        }
+
+        // Auto-close overlay after 3 seconds
+        setTimeout(() => {
+            document.getElementById('timerOverlay').classList.remove('active');
+        }, 3000);
+    }
 
     window.startTimer = function(seconds) {
-        remainingSeconds = seconds;
+        timerEndTime = Date.now() + seconds * 1000;
+        timerFinished = false;
         const overlay = document.getElementById('timerOverlay');
         overlay.classList.add('active');
         updateTimerDisplay();
 
-        // Clear any existing interval
-        if (timerInterval) {
-            clearInterval(timerInterval);
-        }
+        if (timerInterval) clearInterval(timerInterval);
 
-        // Start countdown
         timerInterval = setInterval(() => {
-            remainingSeconds--;
             updateTimerDisplay();
-
-            if (remainingSeconds <= 0) {
-                clearInterval(timerInterval);
-                // Vibrate and play sound (if supported)
-                if (navigator.vibrate) {
-                    navigator.vibrate([200, 100, 200, 100, 200]);
-                }
-                // Auto-close after 3 seconds
-                setTimeout(() => {
-                    overlay.classList.remove('active');
-                }, 3000);
+            if (getRemainingSeconds() <= 0) {
+                onTimerComplete();
             }
-        }, 1000);
+        }, 250); // check 4x/sec for snappy updates after returning from background
     };
 
-    function updateTimerDisplay() {
-        const minutes = Math.floor(remainingSeconds / 60);
-        const seconds = remainingSeconds % 60;
-        const display = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        document.getElementById('timerDisplay').textContent = display;
-    }
+    // When the page becomes visible again, immediately sync the timer
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && timerInterval && !timerFinished) {
+            updateTimerDisplay();
+            if (getRemainingSeconds() <= 0) {
+                onTimerComplete();
+            }
+        }
+    });
 
     // Timer cancel
     document.getElementById('timerCancel').addEventListener('click', () => {
         if (timerInterval) {
             clearInterval(timerInterval);
+            timerInterval = null;
         }
+        timerFinished = false;
         document.getElementById('timerOverlay').classList.remove('active');
     });
 
     // Timer add 30 seconds
     document.getElementById('timerAdd30').addEventListener('click', () => {
-        remainingSeconds += 30;
+        timerEndTime += 30 * 1000;
+        if (timerFinished) {
+            // Timer already ended, restart the interval
+            timerFinished = false;
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                updateTimerDisplay();
+                if (getRemainingSeconds() <= 0) {
+                    onTimerComplete();
+                }
+            }, 250);
+        }
         updateTimerDisplay();
     });
 
@@ -1782,6 +1967,28 @@
 
         e.target.value = '';
     });
+
+    // Scroll-to-top button
+    const scrollTopBtn = document.getElementById('scrollTopBtn');
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 300) {
+            scrollTopBtn.classList.add('visible');
+        } else {
+            scrollTopBtn.classList.remove('visible');
+        }
+    });
+    scrollTopBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // Restore active workout if there was one in progress
+    if (restoreActiveWorkout()) {
+        updateDateDisplay();
+        const yr = selectedWorkoutDate.getFullYear();
+        const mo = String(selectedWorkoutDate.getMonth() + 1).padStart(2, '0');
+        const dy = String(selectedWorkoutDate.getDate()).padStart(2, '0');
+        datePicker.value = `${yr}-${mo}-${dy}`;
+    }
 
     // Initial render
     renderWorkout();
