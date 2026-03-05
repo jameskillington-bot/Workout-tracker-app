@@ -321,7 +321,7 @@
 
         .set-row {
             display: grid;
-            grid-template-columns: 40px 80px 80px 40px;
+            grid-template-columns: 40px 80px 80px 32px 32px;
             gap: 8px;
             align-items: center;
             margin-bottom: 8px;
@@ -397,6 +397,29 @@
         .delete-set:active {
             background: #FF5F15;
             color: #ffffff;
+        }
+
+        .complete-set {
+            background: #1a1a1a;
+            color: rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 95, 21, 0.3);
+            border-radius: 6px;
+            width: 32px;
+            height: 32px;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            align-self: flex-end;
+            margin-bottom: 2px;
+            transition: all 0.2s ease;
+        }
+
+        .complete-set.done {
+            background: #FF5F15;
+            color: #000000;
+            border-color: #FF5F15;
         }
 
         .add-set-btn {
@@ -543,6 +566,7 @@
             max-height: 80vh;
             overflow-y: auto;
             padding: 24px;
+            padding-top: 0;
             border: 1px solid rgba(255, 95, 21, 0.2);
             box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
         }
@@ -551,7 +575,11 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            padding: 24px 0 20px 0;
+            position: sticky;
+            top: 0;
+            background: #111111;
+            z-index: 10;
         }
 
         .modal-title {
@@ -1441,6 +1469,7 @@
                                        onchange="updateSet(${exercise.id}, ${index}, 'reps', this.value)"
                                        placeholder="0">
                             </div>
+                            <button class="complete-set ${set.done ? 'done' : ''}" onclick="toggleSetDone(${exercise.id}, ${index})">&#10003;</button>
                             <button class="delete-set" onclick="deleteSet(${exercise.id}, ${index})">&times;</button>
                         </div>
                     `).join('')}
@@ -1494,6 +1523,22 @@
         if (exercise && exercise.sets[setIndex]) {
             exercise.sets[setIndex][field] = value;
             saveActiveWorkout();
+        }
+    };
+
+    // Toggle set done
+    window.toggleSetDone = function(exerciseId, setIndex) {
+        const exercise = currentWorkout.find(e => e.id === exerciseId);
+        if (exercise && exercise.sets[setIndex]) {
+            exercise.sets[setIndex].done = !exercise.sets[setIndex].done;
+            saveActiveWorkout();
+            const card = document.querySelector(`[data-exercise-id="${exerciseId}"]`);
+            if (card) {
+                const btns = card.querySelectorAll('.complete-set');
+                if (btns[setIndex]) {
+                    btns[setIndex].classList.toggle('done', exercise.sets[setIndex].done);
+                }
+            }
         }
     };
 
@@ -1781,53 +1826,57 @@
         }
     }
 
-    // Generate a deep bell sound using the pre-unlocked AudioContext
+    // Play a single boxing-style bell strike at a given time offset
+    function playBellStrike(ctx, startTime) {
+        // Bright metallic strike (~800Hz fundamental)
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, startTime);
+        osc.frequency.exponentialRampToValueAtTime(600, startTime + 1.2);
+        gain.gain.setValueAtTime(0.7, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 1.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(startTime);
+        osc.stop(startTime + 1.2);
+
+        // Metallic overtone (~2000Hz)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(2000, startTime);
+        osc2.frequency.exponentialRampToValueAtTime(1500, startTime + 0.6);
+        gain2.gain.setValueAtTime(0.25, startTime);
+        gain2.gain.exponentialRampToValueAtTime(0.001, startTime + 0.6);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(startTime);
+        osc2.stop(startTime + 0.6);
+
+        // Low body resonance (~200Hz)
+        const osc3 = ctx.createOscillator();
+        const gain3 = ctx.createGain();
+        osc3.type = 'sine';
+        osc3.frequency.setValueAtTime(200, startTime);
+        gain3.gain.setValueAtTime(0.3, startTime);
+        gain3.gain.exponentialRampToValueAtTime(0.001, startTime + 1.0);
+        osc3.connect(gain3);
+        gain3.connect(ctx.destination);
+        osc3.start(startTime);
+        osc3.stop(startTime + 1.0);
+    }
+
+    // Double-ring boxing bell sound
     function playBellSound() {
         try {
             const ctx = timerAudioCtx;
             if (!ctx || ctx.state === 'closed') return;
-            // Resume in case iOS suspended it while backgrounded
             if (ctx.state === 'suspended') ctx.resume();
 
             const t = ctx.currentTime;
-
-            // Main bell tone (deep, ~180Hz)
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(180, t);
-            osc.frequency.exponentialRampToValueAtTime(120, t + 2);
-            gain.gain.setValueAtTime(0.6, t);
-            gain.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(t);
-            osc.stop(t + 2.5);
-
-            // Harmonic overtone for richness
-            const osc2 = ctx.createOscillator();
-            const gain2 = ctx.createGain();
-            osc2.type = 'sine';
-            osc2.frequency.setValueAtTime(360, t);
-            osc2.frequency.exponentialRampToValueAtTime(240, t + 1.5);
-            gain2.gain.setValueAtTime(0.2, t);
-            gain2.gain.exponentialRampToValueAtTime(0.001, t + 1.5);
-            osc2.connect(gain2);
-            gain2.connect(ctx.destination);
-            osc2.start(t);
-            osc2.stop(t + 1.5);
-
-            // Sub-bass thump for depth
-            const osc3 = ctx.createOscillator();
-            const gain3 = ctx.createGain();
-            osc3.type = 'sine';
-            osc3.frequency.setValueAtTime(90, t);
-            gain3.gain.setValueAtTime(0.3, t);
-            gain3.gain.exponentialRampToValueAtTime(0.001, t + 2);
-            osc3.connect(gain3);
-            gain3.connect(ctx.destination);
-            osc3.start(t);
-            osc3.stop(t + 2);
+            playBellStrike(ctx, t);        // First ring
+            playBellStrike(ctx, t + 0.6);  // Second ring
         } catch (e) {
             console.log('Audio playback failed:', e);
         }
