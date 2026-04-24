@@ -774,10 +774,11 @@
     const day = String(selectedWorkoutDate.getDate()).padStart(2, '0');
     datePicker.value = `${year}-${month}-${day}`;
 
-    datePicker.addEventListener('change', (e) => {
+    datePicker.addEventListener('change', async (e) => {
         if (e.target.value) {
             selectedWorkoutDate = new Date(e.target.value + 'T12:00:00');
             updateDateDisplay();
+            await loadWorkoutForDate(selectedWorkoutDate);
         }
     });
 
@@ -923,13 +924,22 @@
                 history = [];
             }
 
-            // Add new session with selected date
+            // Check if a session already exists for this date and replace it
+            const targetDate = selectedWorkoutDate.toISOString().slice(0, 10);
+            const existingIndex = history.findIndex(s =>
+                new Date(s.date).toISOString().slice(0, 10) === targetDate
+            );
+
             const session = {
                 date: selectedWorkoutDate.toISOString(),
                 exercises: workoutData
             };
 
-            history.unshift(session); // Add to beginning
+            if (existingIndex >= 0) {
+                history[existingIndex] = session;
+            } else {
+                history.unshift(session);
+            }
 
             // Sort by date (newest first)
             history.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -953,6 +963,33 @@
         } catch (error) {
             return [];
         }
+    }
+
+    // Load workout for a specific date from history
+    async function loadWorkoutForDate(date) {
+        const history = await loadHistory();
+        const targetDate = date.toISOString().slice(0, 10);
+
+        const match = history.find(session => {
+            return new Date(session.date).toISOString().slice(0, 10) === targetDate;
+        });
+
+        currentWorkout = [];
+
+        if (match) {
+            Object.entries(match.exercises).forEach(([name, sets]) => {
+                currentWorkout.push({
+                    id: exerciseCounter++,
+                    name: name,
+                    sets: sets.map(set => ({
+                        weight: set.weight || '',
+                        reps: set.reps || ''
+                    }))
+                });
+            });
+        }
+
+        renderWorkout();
     }
 
     // Load custom exercises
