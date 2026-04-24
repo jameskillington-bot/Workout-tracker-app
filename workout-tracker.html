@@ -773,6 +773,7 @@
     const month = String(selectedWorkoutDate.getMonth() + 1).padStart(2, '0');
     const day = String(selectedWorkoutDate.getDate()).padStart(2, '0');
     datePicker.value = `${year}-${month}-${day}`;
+    datePicker.max = `${year}-${month}-${day}`;
 
     datePicker.addEventListener('change', (e) => {
         if (e.target.value) {
@@ -1184,6 +1185,12 @@
             // Reset date to today
             selectedWorkoutDate = new Date();
             updateDateDisplay();
+            const todayY = selectedWorkoutDate.getFullYear();
+            const todayM = String(selectedWorkoutDate.getMonth() + 1).padStart(2, '0');
+            const todayD = String(selectedWorkoutDate.getDate()).padStart(2, '0');
+            const todayStr = `${todayY}-${todayM}-${todayD}`;
+            datePicker.value = todayStr;
+            datePicker.max = todayStr;
             
             renderWorkout();
         } catch (error) {
