@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI NEWSFEED // INTELLIGENCE MATRIX</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="crt-vignette" aria-hidden="true"></div>
+
+    <header id="header">
+        <div class="header-top">
+            <div class="logo-section">
+                <h1 class="logo">
+                    <span class="glitch" data-text="AI NEWSFEED">AI NEWSFEED</span>
+                </h1>
+                <div class="logo-sub">// REALTIME INTELLIGENCE MATRIX</div>
+            </div>
+            <div class="header-status">
+                <div class="status-live">
+                    <span class="pulse-dot"></span>
+                    LIVE FEED
+                </div>
+                <div class="status-info">
+                    <span id="story-count">-- STORIES</span>
+                    <span class="divider">//</span>
+                    <span id="last-updated">CONNECTING...</span>
+                </div>
+                <button class="refresh-btn" id="refresh-btn" title="Refresh feed">&#8635; REFRESH</button>
+            </div>
+        </div>
+
+        <div class="ticker-wrap">
+            <div class="ticker-label">BREAKING:</div>
+            <div class="ticker-content">
+                <div class="ticker-inner" id="ticker">
+                    <span>INITIALIZING AI NEWSFEED INTELLIGENCE MATRIX...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-bar">
+            <div class="filter-tabs">
+                <button class="tab active" data-filter="all">&#9674; ALL</button>
+                <button class="tab" data-filter="ai">&#9674; AI</button>
+                <button class="tab" data-filter="llm">&#9674; LLM</button>
+                <button class="tab" data-filter="retail">&#9674; RETAIL</button>
+            </div>
+            <div class="sort-info">SORTED: NEWEST FIRST</div>
+        </div>
+    </header>
+
+    <div class="loading-screen" id="loading-screen">
+        <div class="loading-content">
+            <div class="loading-logo">AI NEWSFEED</div>
+            <div class="loading-bar-wrap">
+                <div class="loading-bar" id="loading-bar"></div>
+            </div>
+            <div class="loading-text" id="loading-text">INITIALIZING FEED<span class="cursor">_</span></div>
+            <div class="loading-sources" id="loading-sources"></div>
+        </div>
+    </div>
+
+    <main id="main">
+        <div class="feed" id="feed"></div>
+        <div class="no-results" id="no-results" style="display:none">
+            <div class="no-results-icon">&#9674;</div>
+            <div>NO STORIES MATCH CURRENT FILTER</div>
+        </div>
+    </main>
+
+    <div class="viewer-overlay" id="viewer-overlay" role="dialog" aria-modal="true">
+        <div class="viewer">
+            <div class="viewer-header">
+                <div class="viewer-header-left">
+                    <span class="viewer-category" id="viewer-category"></span>
+                    <span class="viewer-source" id="viewer-source"></span>
+                    <span class="viewer-date" id="viewer-date"></span>
+                </div>
+                <button class="viewer-close" id="viewer-close" aria-label="Close viewer">&#x2715; CLOSE</button>
+            </div>
+
+            <div class="viewer-title-bar">
+                <h2 class="viewer-title" id="viewer-title"></h2>
+            </div>
+
+            <div class="viewer-tabs">
+                <button class="viewer-tab active" data-view="summary">&#9674; SUMMARY</button>
+                <button class="viewer-tab" data-view="source">&#9674; SOURCE</button>
+            </div>
+
+            <div class="viewer-panel" id="panel-summary">
+                <div class="summary-content" id="summary-content"></div>
+            </div>
+
+            <div class="viewer-panel" id="panel-source" style="display:none">
+                <div class="iframe-loading" id="iframe-loading">
+                    <span class="cursor-block">&#9608;</span>&nbsp;LOADING SOURCE...
+                </div>
+                <iframe
+                    id="viewer-iframe"
+                    src="about:blank"
+                    sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation"
+                    title="Article source"
+                ></iframe>
+                <div class="iframe-blocked" id="iframe-blocked" style="display:none">
+                    <div class="blocked-icon">&#9888;</div>
+                    <div class="blocked-title">SOURCE BLOCKED</div>
+                    <div class="blocked-msg">This site prevents embedding. Open in a new tab to view the full article.</div>
+                    <a id="blocked-link" href="#" target="_blank" rel="noopener noreferrer" class="open-external-btn">&#8599; OPEN IN NEW TAB</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
